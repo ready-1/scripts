@@ -1,0 +1,19 @@
+
+# prompt for repo name
+
+# create local repo with a default branch named "main"
+
+#create .gitignore  prompt for specific technologies, frameworks, apps, local dirs, etc.
+
+# create README with minimal info
+
+# create License.  prompt for common licenses such as apache, gnu, mit.
+
+# git add .
+
+# git commit with message.  offer a default message.
+
+# create remote repo on github
+
+# git push to remote
+

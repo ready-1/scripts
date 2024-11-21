@@ -1,0 +1,161 @@
+#!/bin/bash
+
+set -e  # Exit on errors
+
+# Configuration
+DOTFILES_DIR="$HOME/.dotfiles"
+BACKUP_DIR="$HOME/.dotfiles_backup"
+PLATFORM=$(uname)  # Detect the platform (Linux, Darwin, etc.)
+SCRIPT_NAME="manage_yadm"  # Identifier for syslog
+YADM_REPO="git@github.com:ready-1/dotfiles.git"  # Replace with your SSH YADM repo
+
+# Log function using syslog and console output
+log_info() {
+    logger -t "$SCRIPT_NAME" "[INFO] $*"
+    echo "[INFO] $*"
+}
+
+log_warning() {
+    logger -t "$SCRIPT_NAME" "[WARNING] $*"
+    echo "[WARNING] $*"
+}
+
+log_error() {
+    logger -t "$SCRIPT_NAME" "[ERROR] $*"
+    echo "[ERROR] $*"
+    exit 1
+}
+
+trap 'log_error "Error on line ${LINENO}: $BASH_COMMAND"' ERR
+
+log_info "Starting yadm management script at $(date)"
+
+# Step 1: Ensure the .dotfiles directory and YADM repo exist
+if [ ! -d "$DOTFILES_DIR" ]; then
+    log_warning "Dotfiles directory ($DOTFILES_DIR) does not exist. Creating it..."
+    mkdir -p "$DOTFILES_DIR"
+    log_info "Created $DOTFILES_DIR"
+fi
+
+if [ ! -d "$HOME/.local/share/yadm/repo.git" ]; then
+    log_warning "YADM repository not found. Cloning from $YADM_REPO..."
+    yadm clone "$YADM_REPO"
+    log_info "Cloned YADM repository."
+fi
+
+# Function to ensure symlinks are correct
+ensure_symlinks() {
+    log_info "Ensuring symlinks for platform: $PLATFORM..."
+    mkdir -p "$BACKUP_DIR"
+
+    for file in "$DOTFILES_DIR"/*; do
+        basefile=$(basename "$file")
+        target="$HOME/$basefile"
+
+        # Platform-specific handling
+        if [[ "$basefile" =~ .*_mac.* && "$PLATFORM" != "Darwin" ]] || \
+           [[ "$basefile" =~ .*_linux.* && "$PLATFORM" != "Linux" ]]; then
+            if [ -L "$target" ]; then
+                log_info "Removing incorrect symlink: $target"
+                rm -f "$target"
+            fi
+            continue
+        fi
+
+        # Backup and create symlink
+        if [ -e "$target" ] || [ -L "$target" ]; then
+            log_warning "Backing up existing file: $target -> $BACKUP_DIR/$basefile"
+            mv -f "$target" "$BACKUP_DIR/$basefile"
+        fi
+        log_info "Creating symlink: $target -> $file"
+        ln -sf "$file" "$target"
+    done
+    log_info "Symlink verification completed."
+}
+
+# Function to add new files to yadm
+add_new_files() {
+    log_info "Adding new files to YADM..."
+    yadm add "$DOTFILES_DIR"/*
+    ensure_symlinks  # Ensure symlinks for any new files
+    log_info "New files added. Run the commit option to save them."
+}
+
+# Function to commit and push changes
+commit_and_push() {
+    ensure_symlinks  # Ensure all symlinks are in place before committing
+    read -rp "Enter commit message: " COMMIT_MSG
+    log_info "Committing changes with message: $COMMIT_MSG"
+    yadm commit -m "$COMMIT_MSG"
+    log_info "Pushing changes to remote repository..."
+    yadm push
+    log_info "Changes pushed successfully."
+}
+
+# Function to pull new changes
+pull_changes() {
+    log_info "Pulling latest changes from remote repository..."
+    yadm pull
+    ensure_symlinks  # Ensure symlinks are updated after pulling changes
+    log_info "Latest changes pulled successfully."
+}
+
+# Function to view the status of the yadm repository
+view_status() {
+    log_info "Checking YADM status..."
+    yadm status
+}
+
+# Function to reset uncommitted changes
+reset_changes() {
+    log_warning "Resetting uncommitted changes..."
+    yadm reset --hard
+    ensure_symlinks  # Rebuild symlinks after resetting changes
+    log_info "Uncommitted changes have been discarded."
+}
+
+# Main menu
+while true; do
+    echo
+    echo "Select an operation:"
+    echo "1) Add new files to YADM"
+    echo "2) Commit changes and push to remote"
+    echo "3) Pull latest changes from remote"
+    echo "4) View YADM status"
+    echo "5) Reset uncommitted changes"
+    echo "6) Exit"
+    read -rp "Enter your choice (1-6): " CHOICE
+
+    case $CHOICE in
+        1)
+	    clear
+            add_new_files
+            ;;
+        2)
+	    clear
+            commit_and_push
+            ;;
+        3)
+	    clear
+            pull_changes
+            ;;
+        4)
+	    clear
+            view_status
+            ;;
+        5)
+	    clear
+            reset_changes
+            ;;
+        6)
+            log_info "Exiting script. Goodbye!"
+            break
+            ;;
+        *)
+            log_warning "Invalid choice. Please try again."
+            ;;
+    esac
+done
+
+log_info "Operation completed successfully at $(date)."
+
